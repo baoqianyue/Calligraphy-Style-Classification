@@ -28,8 +28,8 @@ def network(inputs, train_phase):
             inputs = batchNorm(inputs, train_phase, "BN")
             inputs = relu(inputs)
             inputs = SE_Block(inputs)
-        with tf.variable_scope("haar_wavelet"):
-            inputs = haar_wavelet_block(inputs)
+        # with tf.variable_scope("haar_wavelet"):
+        #     inputs = haar_wavelet_block(inputs)
         with tf.variable_scope("fully_connected"):
             # 全联接计算每个类别的输出值
             logits = fully_conn(inputs, 4)

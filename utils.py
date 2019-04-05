@@ -19,7 +19,7 @@ def load_data(dir):
             src = Image.open(img_path)
             arr = np.asarray(src, dtype=np.float32)
             data.append(arr)
-        elif img.split("-")[0] == '2':
+        elif img.split("_")[0] == '2':
             labels.append([0, 0, 1, 0])
             img_path = os.path.join(dir, img)
             src = Image.open(img_path)
