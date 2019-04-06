@@ -2,6 +2,8 @@ import numpy as np
 import tensorflow as tf
 from utils import load_data, random_read_batch
 from net import network
+import os
+import shutil
 
 BATCH_SIZE = 50
 LEARNING_RATE = 1e-3
@@ -10,6 +12,7 @@ EPSILON = 1e-10
 TRAINPATH = './CalliData/trainData/'
 TESTPATH = './CalliData/testData/'
 LOG_PATH = './logs/'
+SAVE_PATH = './save_model/'
 
 
 def train():
@@ -33,6 +36,21 @@ def train():
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
 
+    # 构建signature_def 对象
+    signature = tf.saved_model.signature_def_utils.build_signature_def(
+        inputs={
+            'x_input': tf.saved_model.utils.build_tensor_info(inputs),
+            'y_input': tf.saved_model.utils.build_tensor_info(labels),
+            'istrain_input': tf.saved_model.utils.build_tensor_info(is_training),
+            'lr_input': tf.saved_model.utils.build_tensor_info(learning_rate)
+        },
+        outputs={
+            'y_predict': tf.saved_model.utils.build_tensor_info(prediction),
+            'loss_func': tf.saved_model.utils.build_tensor_info(loss)
+        },
+        method_name=tf.saved_model.signature_constants.PREDICT_METHOD_NAME
+    )
+
     merged = tf.summary.merge_all()
 
     writer = tf.summary.FileWriter(LOG_PATH, sess.graph)
@@ -45,16 +63,25 @@ def train():
     max_test_acc = 0
     loss_list = []
     acc_list = []
-    for i in range(5000):
+    for i in range(10000):
         batch_data, batch_label = random_read_batch(traindata, trainlabels, BATCH_SIZE)
         # train Op
         sess.run(Opt, feed_dict={inputs: batch_data, labels: batch_label,
                                  is_training: True, learning_rate: LEARNING_RATE})
-        if i % 20 == 0:
-            [LOSS, TRAIN_ACCURACY] = sess.run([loss, accuracy],
-                                              feed_dict={inputs: batch_data, labels: batch_label,
-                                                         is_training: False, learning_rate: LEARNING_RATE})
+        if i % 500 == 0:
+            [LOSS, TRAIN_ACCURACY, PREDICTION] = sess.run([loss, accuracy, prediction],
+                                                          feed_dict={inputs: batch_data, labels: batch_label,
+                                                                     is_training: False, learning_rate: LEARNING_RATE})
             loss_list.append(LOSS)
+            if os.path.exists(SAVE_PATH):
+                shutil.rmtree(SAVE_PATH)
+
+            builder = tf.saved_model.builder.SavedModelBuilder(SAVE_PATH)
+            builder.add_meta_graph_and_variables(sess,
+                                                 [tf.saved_model.tag_constants.SERVING],
+                                                 {tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
+                                                      signature})
+            builder.save()
             log_res = sess.run(merged, feed_dict={inputs: batch_data, labels: batch_label,
                                                   is_training: False, learning_rate: LEARNING_RATE})
             writer.add_summary(log_res, i)
