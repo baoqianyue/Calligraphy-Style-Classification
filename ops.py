@@ -6,8 +6,11 @@ def conv(inputs, num_out, ksize, strides):
     # 输入通道数
     c = int(inputs.shape[-1])
     # xavier_initializer表示保证每层初始化的参数梯度大致相同
-    W = tf.get_variable("W", shape=[ksize, ksize, c, num_out], initializer=contrib.layers.xavier_initializer())
-    b = tf.get_variable("b", shape=[num_out], initializer=tf.constant_initializer([0.01]))
+    # W = tf.get_variable(shape=[ksize, ksize, c, num_out], initializer=contrib.layers.xavier_initializer())
+    # b = tf.get_variable(shape=[num_out], initializer=tf.constant_initializer([0.01]))
+    tf.set_random_seed(1)
+    W = tf.Variable(tf.truncated_normal(shape=[ksize, ksize, c, num_out], stddev=0.1))
+    b = tf.Variable(tf.constant(0.01, shape=[num_out]))
     return tf.nn.conv2d(inputs, W, strides=[1, strides, strides, 1], padding="SAME") + b
 
 
@@ -22,8 +25,11 @@ def relu(inputs):
 def fully_conn(inputs, num_out):
     inputs = tf.layers.flatten(inputs)
     c = int(inputs.shape[-1])
-    W = tf.get_variable("W", [c, num_out], initializer=contrib.layers.xavier_initializer())
-    b = tf.get_variable("b", [num_out], initializer=tf.constant_initializer([0.01]))
+    # W = tf.get_variable([c, num_out], initializer=contrib.layers.xavier_initializer())
+    # b = tf.get_variable([num_out], initializer=tf.constant_initializer([0.01]))
+    tf.set_random_seed(1)
+    W = tf.Variable(tf.truncated_normal(shape=[c, num_out], stddev=0.1))
+    b = tf.Variable(tf.constant(0.01, shape=[num_out]))
     return tf.matmul(inputs, W) + b
 
 
@@ -59,11 +65,11 @@ def batchNorm(x, train_phase, scope_bn):
     """batch normalization"""
     with tf.variable_scope(scope_bn):
         # beta和gamma是在bn计算后对每个输出神经元进行拟合的两个参数
-        beta = tf.Variable(tf.constant(0.0, shape=[x.shape[-1]]), trainable=True, name='beta')
+        beta = tf.Variable(tf.constant(0.0, shape=[x.shape[-1]]), trainable=True)
         # gamma相当于偏置项
-        gamma = tf.Variable(tf.constant(1.0, shape=[x.shape[-1]]), trainable=True, name='gamma')
+        gamma = tf.Variable(tf.constant(1.0, shape=[x.shape[-1]]), trainable=True)
         # 该函数返回两个张量，均值和方差，第二个参数代表在哪个维度上面求解
-        batch_mean, batch_var = tf.nn.moments(x, [0, 1, 2], name='moments')
+        batch_mean, batch_var = tf.nn.moments(x, [0, 1, 2])
         # 滑动更新参数，decay表示衰减速率，用于控制模型的更新速度
         ema = tf.train.ExponentialMovingAverage(decay=0.5)
 

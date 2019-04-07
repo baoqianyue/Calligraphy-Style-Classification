@@ -3,7 +3,7 @@ from utils import load_data
 import numpy as np
 
 GRAHP_PATH = './save_model'
-TESTPATH = './CalliData/testData/'
+TESTPATH = './datasets/CalliData/testData/'
 
 testdata, testlabels = load_data(TESTPATH)
 testdata = np.reshape(testdata, [800, 64, 64, 1]) / 127.5 - 1.0
@@ -39,5 +39,10 @@ prediction, loss = sess.run([y_predict_tensor, loss_op], {
     istrain: False,
     lr: 1e-3
 })
+
+frozen_graphdef = tf.graph_util.convert_variables_to_constants(sess, sess.graph_def,
+                                                               ['HW_SE_NET/fully_connected/prediction'])
+tflite_model = tf.lite.toco_convert(frozen_graphdef, x_test, y_test)
+open('model.tflite', 'wb').write(tflite_model)
 
 print("predict:", np.around(prediction, 5))

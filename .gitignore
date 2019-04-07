@@ -2,6 +2,8 @@
 # Created by https://www.gitignore.io/api/pycharm+all,jupyternotebook
 CalliData/
 
+model/
+
 logs/
 ### JupyterNotebook ###
 .ipynb_checkpoints
