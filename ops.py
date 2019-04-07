@@ -1,110 +1,112 @@
+import numpy as np
 import tensorflow as tf
-import tensorflow.contrib as contrib
+from utils import load_data, random_read_batch
+from net import network1
+import os
+from tensorflow.python.framework import graph_util
+
+BATCH_SIZE = 50
+LEARNING_RATE = 1e-3
+WEIGHT_DECAY = 1e-3
+EPSILON = 1e-10
+TRAINPATH = './datasets/CalliData/trainData/'
+TESTPATH = './datasets/CalliData/testData/'
+LOG_PATH = './logs/'
+SAVE_PATH = './model/'
 
 
-def conv(inputs, num_out, ksize, strides):
-    # 输入通道数
-    c = int(inputs.shape[-1])
-    # xavier_initializer表示保证每层初始化的参数梯度大致相同
-    # W = tf.get_variable(shape=[ksize, ksize, c, num_out], initializer=contrib.layers.xavier_initializer())
-    # b = tf.get_variable(shape=[num_out], initializer=tf.constant_initializer([0.01]))
-    tf.set_random_seed(1)
-    W = tf.Variable(tf.truncated_normal(shape=[ksize, ksize, c, num_out], stddev=0.1))
-    b = tf.Variable(tf.constant(0.01, shape=[num_out]))
-    return tf.nn.conv2d(inputs, W, strides=[1, strides, strides, 1], padding="SAME") + b
+def train():
+    inputs = tf.placeholder("float", shape=[None, 64, 64, 1], name="inputs")
+    labels = tf.placeholder("float", shape=[None, 4], name="labels")
+    is_training = tf.placeholder("bool", name="istrain")
+    prediction = network1(inputs, is_training)
+    correct_prediction = tf.equal(tf.argmax(prediction, 1, output_type="int32", name="predict"),
+                                  tf.argmax(labels, 1, output_type="int32"))
+
+    with tf.name_scope("accuracy"):
+        accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
+        # tf.summary.scalar('accuracy', accuracy)
+
+    with tf.name_scope("loss"):
+        loss = -tf.reduce_sum(labels * tf.log(prediction + EPSILON)) + tf.add_n(
+            [tf.nn.l2_loss(var) for var in tf.trainable_variables()]) * WEIGHT_DECAY
+        # tf.summary.scalar('loss', loss)
+
+    Opt = tf.train.AdamOptimizer(LEARNING_RATE).minimize(loss)
+    saver = tf.train.Saver()
+    sess = tf.Session()
+    sess.run(tf.global_variables_initializer())
+
+    # 构建signature_def 对象
+    # signature = tf.saved_model.signature_def_utils.build_signature_def(
+    #     inputs={
+    #         'x_input': tf.saved_model.utils.build_tensor_info(inputs),
+    #         'y_input': tf.saved_model.utils.build_tensor_info(labels),
+    #         'istrain_input': tf.saved_model.utils.build_tensor_info(is_training),
+    #         'lr_input': tf.saved_model.utils.build_tensor_info(learning_rate)
+    #     },
+    #     outputs={
+    #         'y_predict': tf.saved_model.utils.build_tensor_info(prediction),
+    #         'loss_func': tf.saved_model.utils.build_tensor_info(loss)
+    #     },
+    #     method_name=tf.saved_model.signature_constants.PREDICT_METHOD_NAME
+    # )
+
+    # merged = tf.summary.merge_all()
+
+    # writer = tf.summary.FileWriter(LOG_PATH, sess.graph)
+
+    traindata, trainlabels = load_data(TRAINPATH)
+    testdata, testlabels = load_data(TESTPATH)
+    traindata = np.reshape(traindata, [2400, 64, 64, 1]) / 127.5 - 1.0
+    testdata = np.reshape(testdata, [800, 64, 64, 1]) / 127.5 - 1.0
+
+    max_test_acc = 0
+    loss_list = []
+    acc_list = []
+    for i in range(10000):
+        batch_data, batch_label = random_read_batch(traindata, trainlabels, BATCH_SIZE)
+        # train Op
+        sess.run(Opt, feed_dict={inputs: batch_data, labels: batch_label,
+                                 is_training: True})
+        if i % 20 == 0:
+            [LOSS, TRAIN_ACCURACY, prob] = sess.run([loss, accuracy, prediction],
+                                                    feed_dict={inputs: batch_data, labels: batch_label,
+                                                               is_training: False})
+            loss_list.append(LOSS)
+            # if os.path.exists(SAVE_PATH):
+            #     shutil.rmtree(SAVE_PATH)
+
+            # builder = tf.saved_model.builder.SavedModelBuilder(SAVE_PATH)
+            # builder.add_meta_graph_and_variables(sess,
+            #                                      [tf.saved_model.tag_constants.SERVING],
+            #                                      {tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
+            #                                           signature})
+            # builder.save()
+            # log_res = sess.run(merged, feed_dict={inputs: batch_data, labels: batch_label,
+            #                                       is_training: False, learning_rate: LEARNING_RATE})
+            # writer.add_summary(log_res, i)
+
+            TEST_ACCURACY = 0
+            # 测试时每次测试数量为50个
+            for j in range(16):
+                TEST_ACCURACY += sess.run(accuracy, feed_dict={inputs: testdata[j * 50: j * 50 + 50],
+                                                               labels: testlabels[j * 50: j * 50 + 50],
+                                                               is_training: False})
+            # 计算测试平均acc
+            TEST_ACCURACY /= 16
+            acc_list.append(TEST_ACCURACY)
+            if TEST_ACCURACY > max_test_acc:
+                max_test_acc = TEST_ACCURACY
+            print("step: %d, loss: %4g, train acc: %4g, test acc: %4g, max testacc: %4g"
+                  % (i, LOSS, TRAIN_ACCURACY, TEST_ACCURACY, max_test_acc))
+
+    saver.save(sess, os.path.join(SAVE_PATH, 'cnn_model.ckpt'))
+    # 固化变量
+    output_graph_def = graph_util.convert_variables_to_constants(sess, sess.graph_def, output_node_names=['predict'])
+    with tf.gfile.FastGFile(os.path.join(SAVE_PATH, 'mobile_model.pb'), mode='wb') as f:
+        f.write(output_graph_def.SerializeToString())
 
 
-def max_pooling(inputs, ksize, strides):
-    return tf.nn.max_pool(inputs, [1, ksize, ksize, 1], [1, strides, strides, 1], padding="SAME")
-
-
-def relu(inputs):
-    return tf.nn.relu(inputs)
-
-
-def fully_conn(inputs, num_out):
-    inputs = tf.layers.flatten(inputs)
-    c = int(inputs.shape[-1])
-    # W = tf.get_variable([c, num_out], initializer=contrib.layers.xavier_initializer())
-    # b = tf.get_variable([num_out], initializer=tf.constant_initializer([0.01]))
-    tf.set_random_seed(1)
-    W = tf.Variable(tf.truncated_normal(shape=[c, num_out], stddev=0.1))
-    b = tf.Variable(tf.constant(0.01, shape=[num_out]))
-    return tf.matmul(inputs, W) + b
-
-
-def global_avg_pooling(inputs):
-    h = int(inputs.shape[1])
-    w = int(inputs.shape[2])
-    return tf.nn.avg_pool(inputs, [1, h, w, 1], [1, 1, 1, 1], padding='VALID')
-
-
-def SE_Block(inputs):
-    """squeeze and excitation block"""
-    # 先获取卷积层输出的通道数
-    c = int(inputs.shape[-1])
-    # 压缩卷积层输出
-    squeeze = tf.squeeze(global_avg_pooling(inputs), [1, 2])
-    # 两个fc层
-    with tf.variable_scope("FC1"):
-        # 这里out_num等于c/16是压缩通道
-        excitation = relu(fully_conn(squeeze, int(c / 16)))
-    with tf.variable_scope("FC2"):
-        # 第二个fc层处将通道恢复成c
-        # 通过sigmoid计算得到各通道的权重系数
-        excitation = tf.nn.sigmoid(fully_conn(excitation, c))
-    # 将输出reshape成[-1, 1, 1, c],便于与之前的卷积层相乘
-    excitation = tf.reshape(excitation, [-1, 1, 1, c])
-    # scale代表对se_block后对卷积层每个通道上的调整参数
-    #
-    scale = inputs * excitation
-    return scale
-
-
-def batchNorm(x, train_phase, scope_bn):
-    """batch normalization"""
-    with tf.variable_scope(scope_bn):
-        # beta和gamma是在bn计算后对每个输出神经元进行拟合的两个参数
-        beta = tf.Variable(tf.constant(0.0, shape=[x.shape[-1]]), trainable=True)
-        # gamma相当于偏置项
-        gamma = tf.Variable(tf.constant(1.0, shape=[x.shape[-1]]), trainable=True)
-        # 该函数返回两个张量，均值和方差，第二个参数代表在哪个维度上面求解
-        batch_mean, batch_var = tf.nn.moments(x, [0, 1, 2])
-        # 滑动更新参数，decay表示衰减速率，用于控制模型的更新速度
-        ema = tf.train.ExponentialMovingAverage(decay=0.5)
-
-        def mean_var_with_update():
-            ema_apply_op = ema.apply([batch_mean, batch_var])
-            with tf.control_dependencies([ema_apply_op]):
-                # identity 返回一个与输入张量形状和内容一致的张量
-                return tf.identity(batch_mean), tf.identity(batch_var)
-
-        # 这里要区分是训练过程中的bn还是测试时的bn
-        # 使用cond来进行判断，cond的第一个参数是一个逻辑表达式
-        # 返回为true时，执行后面第一个函数，否则执行后面第二个函数
-        # bn在train过程中，mean和var都是计算当前batch的
-        # bn在test过程中，输入的是单个data，这时bn计算用到的mean和var可以由整个数据集的代替
-        # 或者使用每次train中每个batch的均值来代替
-        mean, var = tf.cond(train_phase, mean_var_with_update,
-                            lambda: (ema.average(batch_mean), ema.average(batch_var)))
-        normed = tf.nn.batch_normalization(x, mean, var, beta, gamma, 1e-3)
-    return normed
-
-
-def haar_wavelet_block(x):
-    # shape of x: Batch_size x feature_map_size
-    x = tf.squeeze(global_avg_pooling(x), [1, 2])
-    feature_map_size = x.shape[-1]
-
-    length = feature_map_size // 2
-    temp = tf.reshape(x, [-1, length, 2])
-    a = (temp[:, :, 0] + temp[:, :, 1]) / 2
-    detail = (temp[:, :, 0] - temp[:, :, 1]) / 2
-    length = length // 2
-    while length != 16:
-        a = tf.reshape(a, [-1, length, 2])
-        detail = tf.concat([(a[:, :, 0] - a[:, :, 1]) / 2, detail], axis=1)
-        a = (a[:, :, 0] + a[:, :, 1]) / 2
-        length = length // 2
-    haar_info = tf.concat([a, detail], axis=1)
-    return haar_info
+if __name__ == "__main__":
+    train()

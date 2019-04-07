@@ -67,6 +67,6 @@ def network1(inputs, train_phase):
 
     # 全联接计算每个类别的输出值
     logits = fully_conn(se2, 4)
-    prediction = tf.nn.softmax(logits, name='prediction')
+    prob = tf.nn.softmax(logits, name='probability')
 
-    return logits, prediction
+    return prob
