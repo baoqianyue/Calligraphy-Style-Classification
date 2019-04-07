@@ -40,9 +40,9 @@ prediction, loss = sess.run([y_predict_tensor, loss_op], {
     lr: 1e-3
 })
 
-frozen_graphdef = tf.graph_util.convert_variables_to_constants(sess, sess.graph_def,
-                                                               ['HW_SE_NET/fully_connected/prediction'])
-tflite_model = tf.lite.toco_convert(frozen_graphdef, x_test, y_test)
-open('model.tflite', 'wb').write(tflite_model)
+# frozen_graphdef = tf.graph_util.convert_variables_to_constants(sess, sess.graph_def,
+#                                                                ['HW_SE_NET/fully_connected/prediction'])
+# tflite_model = tf.lite.toco_convert(frozen_graphdef, x_test, y_test)
+# open('model.tflite', 'wb').write(tflite_model)
 
 print("predict:", np.around(prediction, 5))

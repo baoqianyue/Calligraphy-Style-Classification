@@ -60,6 +60,8 @@ def train():
     traindata = np.reshape(traindata, [2400, 64, 64, 1]) / 127.5 - 1.0
     testdata = np.reshape(testdata, [800, 64, 64, 1]) / 127.5 - 1.0
 
+    # print(np.around(traindata[342, 32:38, 32:38, :], 4))
+
     max_test_acc = 0
     loss_list = []
     acc_list = []
@@ -69,10 +71,11 @@ def train():
         sess.run(Opt, feed_dict={inputs: batch_data, labels: batch_label,
                                  is_training: True})
         if i % 1 == 0:
-            [LOSS, TRAIN_ACCURACY] = sess.run([loss, accuracy],
-                                              feed_dict={inputs: batch_data, labels: batch_label,
-                                                         is_training: False})
+            [LOSS, TRAIN_ACCURACY, prob] = sess.run([loss, accuracy, prediction],
+                                                    feed_dict={inputs: batch_data, labels: batch_label,
+                                                               is_training: False})
             loss_list.append(LOSS)
+            print(prob)
             # if os.path.exists(SAVE_PATH):
             #     shutil.rmtree(SAVE_PATH)
 
