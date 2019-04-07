@@ -19,8 +19,9 @@ def train():
     inputs = tf.placeholder("float", shape=[None, 64, 64, 1], name="inputs")
     labels = tf.placeholder("float", shape=[None, 4], name="labels")
     is_training = tf.placeholder("bool", name="istrain")
-    logits, prediction = network1(inputs, is_training)
-    correct_prediction = tf.equal(tf.argmax(prediction, 1), tf.argmax(labels, 1))
+    prediction = network1(inputs, is_training)
+    correct_prediction = tf.equal(tf.argmax(prediction, 1, output_type="int32", name="predict"),
+                                  tf.argmax(labels, 1, output_type="int32"))
 
     with tf.name_scope("accuracy"):
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
@@ -63,15 +64,15 @@ def train():
     max_test_acc = 0
     loss_list = []
     acc_list = []
-    for i in range(2):
+    for i in range(10000):
         batch_data, batch_label = random_read_batch(traindata, trainlabels, BATCH_SIZE)
         # train Op
         sess.run(Opt, feed_dict={inputs: batch_data, labels: batch_label,
                                  is_training: True})
-        if i % 1 == 0:
-            [LOSS, TRAIN_ACCURACY] = sess.run([loss, accuracy],
-                                              feed_dict={inputs: batch_data, labels: batch_label,
-                                                         is_training: False})
+        if i % 20 == 0:
+            [LOSS, TRAIN_ACCURACY, prob] = sess.run([loss, accuracy, prediction],
+                                                    feed_dict={inputs: batch_data, labels: batch_label,
+                                                               is_training: False})
             loss_list.append(LOSS)
             # if os.path.exists(SAVE_PATH):
             #     shutil.rmtree(SAVE_PATH)
@@ -102,7 +103,7 @@ def train():
 
     saver.save(sess, os.path.join(SAVE_PATH, 'cnn_model.ckpt'))
     # 固化变量
-    output_graph_def = graph_util.convert_variables_to_constants(sess, sess.graph_def, output_node_names=['prediction'])
+    output_graph_def = graph_util.convert_variables_to_constants(sess, sess.graph_def, output_node_names=['predict'])
     with tf.gfile.FastGFile(os.path.join(SAVE_PATH, 'mobile_model.pb'), mode='wb') as f:
         f.write(output_graph_def.SerializeToString())
 
